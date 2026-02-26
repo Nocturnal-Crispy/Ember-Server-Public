@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ember-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  emberd:
+    image: ${IMAGE_NAME:-emberd}
+    container_name: emberd
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      TURN_SECRET: ${TURN_SECRET}
+      SFU_ADDR: ws://ion-sfu:7000
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-file://}
+    ports:
+      - "${SERVER_PORT:-8085}:8085"
+      - "${WS_PORT:-8086}:8086"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  coturn:
+    image: coturn/coturn:4.6.3
+    container_name: ember-coturn
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    environment:
+      TURN_SECRET: ${TURN_SECRET}
+    restart: unless-stopped
+
+  ion-sfu:
+    image: pionwebrtc/ion-sfu:latest-jsonrpc
+    container_name: ember-ion-sfu
+    ports:
+      - "7000:7000"
+      - "5000-5200:5000-5200/udp"
+    volumes:
+      - ./sfu.toml:/configs/sfu.toml:ro
+    command: ["-c", "/configs/sfu.toml"]
+    restart: unless-stopped
+    depends_on:
+      - coturn
+
+
+volumes:
+  postgres_data:
