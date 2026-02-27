@@ -18,7 +18,7 @@ services:
 
 
   emberd:
-    image: ${IMAGE_NAME:-emberd}
+    image: nocturnalcrispy/ember-chat-server:latest
     container_name: emberd
     environment:
       DB_HOST: postgres
