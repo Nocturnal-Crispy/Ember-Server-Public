@@ -1,18 +1,31 @@
 # Ember Server Deployment Guide
 
-This guide explains how to deploy the Ember chat server using the `ember-linux` binary file.
+This guide explains how to deploy the Ember chat server using either the binary executable or Docker image.
 
 ## Quick Start
 
 ### Prerequisites
 
-- Linux system (x86_64 architecture)
+- Linux system (x86_64 architecture) **OR** Docker/Docker Compose
 - PostgreSQL database (can be installed locally or hosted)
-- Docker and Docker Compose (for optional services like TURN/STUN and SFU)
+- Docker and Docker Compose (for WebRTC services like TURN/STUN and SFU)
+
+## Deployment Options
+
+You have two main deployment options:
+
+1. **Binary Deployment** - Run the executable directly
+2. **Docker Deployment** - Use the pre-built Docker image
+
+Choose the option that best fits your environment.
+
+---
+
+## Option 1: Binary Deployment
 
 ### Step 1: Download and Prepare
 
-1. Download the `ember-linux` binary
+1. Download the `ember-linux` binary from the [GitHub releases](https://github.com/Nocturnal-Crispy/Ember-Server-Public/releases/latest)
 2. Make it executable:
    ```bash
    chmod +x ember-linux
@@ -25,13 +38,13 @@ Ember requires a PostgreSQL database. You have two options:
 #### Option A: Use Docker Compose (Recommended for testing)
 ```bash
 # Copy the example environment file
-cp .env.example .env
+cp deploy/env.example .env
 
 # Edit .env with your database credentials
 nano .env
 
 # Start PostgreSQL only
-docker-compose up -d postgres
+docker-compose -f deploy/docker-compose.yml up -d postgres
 ```
 
 #### Option B: Use existing PostgreSQL
@@ -87,13 +100,68 @@ For video/audio calling, you'll need additional services:
 
 ```bash
 # Start all services (PostgreSQL, TURN server, SFU)
-docker-compose up -d
+docker-compose -f deploy/docker-compose.yml up -d
 
 # Then run the ember server
 ./ember-linux
 ```
 
-### Step 5: Verify Deployment
+---
+
+## Option 2: Docker Deployment
+
+### Step 1: Pull the Docker Image
+
+```bash
+docker pull nocturnalcrispy/ember-chat-server:latest
+```
+
+### Step 2: Configure Environment
+
+Copy and edit the environment file:
+
+```bash
+cp deploy/env.example deploy/.env
+nano deploy/.env
+```
+
+Configure the same environment variables as shown in the binary deployment section.
+
+### Step 3: Run with Docker Compose
+
+#### Basic Deployment (API + Database only)
+```bash
+docker-compose -f deploy/docker-compose.yml up -d
+```
+
+#### Production Deployment
+For production, use the production compose file:
+
+```bash
+docker-compose -f deploy/docker-compose-prod.yml --env-file deploy/.env up -d
+```
+
+This will start:
+- PostgreSQL database
+- Ember server (from Docker Hub image)
+- Coturn (TURN/STUN server for WebRTC)
+- Ion-SFU (video streaming for WebRTC)
+
+### Step 4: Verify Deployment
+
+Check that the server is running:
+```bash
+curl http://localhost:8085/health
+```
+
+Or check the container status:
+```bash
+docker-compose -f deploy/docker-compose.yml ps
+```
+
+---
+
+## Step 5: Verify Deployment (Both Options)
 
 Check that the server is running:
 ```bash
@@ -103,6 +171,18 @@ curl http://localhost:8085/health
 You should see a health check response.
 
 ## Production Deployment
+
+### Choosing Your Deployment Method
+
+**Choose Binary Deployment if:**
+- You want direct control over the executable
+- You need to customize the runtime environment
+- You prefer traditional server management
+
+**Choose Docker Deployment if:**
+- You want consistent environments across machines
+- You need easy scaling and orchestration
+- You prefer containerized deployments
 
 ### Security Considerations
 
@@ -125,33 +205,9 @@ You should see a health check response.
    - 443/80 (if using reverse proxy)
    - TURN/STUN ports (if using WebRTC)
 
-### Reverse Proxy Setup
+### Production Setup - Binary
 
-Using nginx as a reverse proxy is recommended:
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-    
-    location / {
-        proxy_pass http://localhost:8085;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-    
-    location /ws {
-        proxy_pass http://localhost:8086;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-    }
-}
-```
-
-### Systemd Service
-
+#### Systemd Service
 Create a systemd service for automatic startup:
 
 ```ini
@@ -177,6 +233,60 @@ Enable and start:
 ```bash
 sudo systemctl enable ember
 sudo systemctl start ember
+```
+
+### Production Setup - Docker
+
+#### Using Docker Compose
+For production, use the production compose file:
+
+```bash
+# Copy and configure environment
+cp deploy/env.example deploy/.env
+nano deploy/.env
+
+# Start production services
+docker-compose -f deploy/docker-compose-prod.yml --env-file deploy/.env up -d
+```
+
+#### Docker Service Management
+```bash
+# Check status
+docker-compose -f deploy/docker-compose-prod.yml ps
+
+# View logs
+docker-compose -f deploy/docker-compose-prod.yml logs -f emberd
+
+# Restart services
+docker-compose -f deploy/docker-compose-prod.yml restart emberd
+
+# Stop services
+docker-compose -f deploy/docker-compose-prod.yml down
+```
+
+### Reverse Proxy Setup (Both Options)
+
+Using nginx as a reverse proxy is recommended:
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    
+    location / {
+        proxy_pass http://localhost:8085;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    
+    location /ws {
+        proxy_pass http://localhost:8086;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+}
 ```
 
 ## Environment Variables
